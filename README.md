@@ -9,9 +9,11 @@ Your personal AI advisor that actually knows you. Dumbledore uses RAG to pull co
 Generic AI assistants don't know anything about you. Dumbledore changes that by:
 
 - **Knowing your context** - Syncs from your personal notes (Apple Notes, markdown files, or [LumifyHub](https://www.lumifyhub.io/cli))
+- **Project-aware** - Auto-syncs README.md and CLAUDE.md from your `~/dev/` projects
 - **Local-first** - Embeddings run locally, your data stays on your machine
 - **Learning over time** - Conversations are remembered and become part of your knowledge base
 - **Profile-aware** - Your "Who am I?" note is always included for personalized responses
+- **Style matching** - Analyzes your writing to respond in your voice
 
 ## Data Sources
 
@@ -61,6 +63,9 @@ dumbledore sync --markdown ~/LumifyHub
 dumbledore sync --markdown ~/notes  # Then run:
 dumbledore sync                     # Adds Apple Notes too
 
+# Project docs (automatic)
+# Sync also pulls README.md and CLAUDE.md from ~/dev/* projects
+
 # Fresh start
 dumbledore sync --clear             # Clear and re-sync
 ```
@@ -92,6 +97,16 @@ dumbledore ask "Based on my notes, what should I focus on?"
 dumbledore search "business ideas"
 dumbledore search "workout routine" --top 10
 ```
+
+### Writing Style
+
+```bash
+dumbledore style          # Analyze notes and generate style profile
+dumbledore style --show   # View current style profile
+dumbledore style --clear  # Remove style profile
+```
+
+When a style profile exists, Dumbledore will match your writing voice in responses.
 
 ### Other Commands
 

@@ -4,7 +4,8 @@ from typing import Optional
 
 from rich.console import Console
 
-from ..config import TOP_K_RESULTS, PROFILE_NOTE_TITLE
+from ..config import TOP_K_RESULTS, PROFILE_NOTE_TITLE, STYLE_PROFILE_TITLE
+from .. import db
 from . import embeddings, vectorstore
 
 console = Console()
@@ -45,13 +46,69 @@ def get_profile_context() -> Optional[str]:
     return profile_text
 
 
-def build_context(query: str, top_k: int = TOP_K_RESULTS, include_conversations: bool = True) -> str:
+def get_style_context() -> Optional[str]:
+    """Get the writing style profile.
+
+    This is included to help match the user's writing style.
+    """
+    chunks = vectorstore.get_chunks_by_note(STYLE_PROFILE_TITLE)
+
+    if not chunks:
+        return None
+
+    # Get the style text (strip the note title prefix if present)
+    text = chunks[0]["document"]
+    prefix = f"[Note: {STYLE_PROFILE_TITLE}]\n\n"
+    if text.startswith(prefix):
+        text = text[len(prefix):]
+
+    return text
+
+
+def get_last_conversation_context(exclude_id: Optional[int] = None) -> Optional[str]:
+    """Get a summary of the last conversation for context.
+
+    Args:
+        exclude_id: Conversation ID to exclude (the current conversation)
+    """
+    conversations = db.get_recent_conversations(limit=5)
+
+    # Find the last conversation that's not the current one
+    last_conv = None
+    for conv in conversations:
+        if exclude_id and conv["id"] == exclude_id:
+            continue
+        if conv["message_count"] >= 2:  # At least one exchange
+            last_conv = conv
+            break
+
+    if not last_conv:
+        return None
+
+    messages = db.get_conversation_messages(last_conv["id"], limit=10)
+    if not messages:
+        return None
+
+    # Format as brief summary
+    lines = [f"Last conversation ({last_conv.get('last_message_at', '')[:10]}):"]
+    for msg in messages[-6:]:  # Last 3 exchanges
+        role = "User" if msg["role"] == "user" else "Dumbledore"
+        content = msg["content"]
+        if len(content) > 150:
+            content = content[:150] + "..."
+        lines.append(f"  {role}: {content}")
+
+    return "\n".join(lines)
+
+
+def build_context(query: str, top_k: int = TOP_K_RESULTS, include_conversations: bool = True, current_conversation_id: Optional[int] = None) -> str:
     """Build full context for a query.
 
     Includes:
     1. Profile note (who you are) - always included
-    2. Relevant chunks from semantic search (notes)
-    3. Relevant past conversations (if enabled)
+    2. Writing style profile (if generated)
+    3. Relevant chunks from semantic search (notes)
+    4. Relevant past conversations (if enabled)
 
     Args:
         query: The user's question
@@ -68,7 +125,18 @@ def build_context(query: str, top_k: int = TOP_K_RESULTS, include_conversations:
     if profile:
         context_parts.append(f"## About the User\n{profile}")
 
-    # 2. Relevant chunks from notes
+    # 2. Writing style
+    style = get_style_context()
+    if style:
+        context_parts.append(f"## Writing Style to Match\n{style}")
+
+    # 3. Last conversation (explicit recall)
+    if include_conversations:
+        last_conv = get_last_conversation_context(exclude_id=current_conversation_id)
+        if last_conv:
+            context_parts.append(f"## {last_conv}")
+
+    # 4. Relevant chunks from notes
     results = retrieve(query, top_k=top_k)
 
     note_chunks = []

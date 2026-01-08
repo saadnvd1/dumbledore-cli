@@ -21,6 +21,14 @@ class Note:
     modification_date: Optional[datetime] = None
 
 
+@dataclass
+class NoteMetadata:
+    """Lightweight note metadata for incremental sync checks."""
+    id: str
+    title: str
+    modification_date: Optional[datetime] = None
+
+
 def run_applescript(script: str, timeout: int = 600) -> Optional[str]:
     """Run AppleScript and return output."""
     try:
@@ -48,6 +56,152 @@ def get_note_count() -> int:
     script = 'tell application "Notes" to return count of notes'
     result = run_applescript(script)
     return int(result) if result else 0
+
+
+def get_all_note_metadata(show_progress: bool = True) -> list[NoteMetadata]:
+    """Get lightweight metadata (id, title, modification_date) for all notes.
+
+    Uses bulk property access which is much faster than iteration.
+    """
+    if show_progress:
+        console.print(f"[dim]Checking notes for changes...[/dim]")
+
+    # Get all IDs, titles, and modification dates in bulk - much faster than iteration
+    script = '''
+    tell application "Notes"
+        set allIds to id of every note
+        set allTitles to name of every note
+        set allDates to modification date of every note
+
+        set output to ""
+        set noteCount to count of allIds
+
+        repeat with i from 1 to noteCount
+            set modDate to item i of allDates
+            set modDateStr to (year of modDate as string) & "-" & text -2 thru -1 of ("0" & ((month of modDate) as integer)) & "-" & text -2 thru -1 of ("0" & (day of modDate)) & "T" & text -2 thru -1 of ("0" & (hours of modDate)) & ":" & text -2 thru -1 of ("0" & (minutes of modDate)) & ":" & text -2 thru -1 of ("0" & (seconds of modDate))
+
+            set output to output & (item i of allIds) & "<<<SEP>>>" & (item i of allTitles) & "<<<SEP>>>" & modDateStr & "<<<NOTE>>>"
+        end repeat
+
+        return output
+    end tell
+    '''
+
+    result = run_applescript(script, timeout=300)
+
+    if not result:
+        if show_progress:
+            console.print("[yellow]Could not fetch note metadata[/yellow]")
+        return []
+
+    all_metadata = []
+    note_strings = result.split("<<<NOTE>>>")
+
+    for note_str in note_strings:
+        if not note_str.strip():
+            continue
+
+        parts = note_str.split("<<<SEP>>>")
+        if len(parts) >= 3:
+            mod_date = None
+            try:
+                mod_date = datetime.fromisoformat(parts[2])
+            except (ValueError, IndexError):
+                pass
+
+            all_metadata.append(NoteMetadata(
+                id=parts[0],
+                title=parts[1],
+                modification_date=mod_date,
+            ))
+
+    if show_progress:
+        console.print(f"[dim]Found {len(all_metadata)} notes[/dim]")
+
+    return all_metadata
+
+
+def get_notes_by_ids(note_ids: list[str], show_progress: bool = True) -> list[Note]:
+    """Fetch full content for specific notes by their IDs.
+
+    Use this after checking metadata to only fetch notes that need syncing.
+    """
+    if not note_ids:
+        return []
+
+    if show_progress:
+        console.print(f"[dim]Fetching {len(note_ids)} notes that need syncing...[/dim]")
+
+    all_notes = []
+
+    # Process in batches to avoid AppleScript limits
+    batch_size = 25
+    for i in range(0, len(note_ids), batch_size):
+        batch_ids = note_ids[i:i + batch_size]
+
+        # Build AppleScript to fetch by IDs
+        id_conditions = " or ".join([f'id of theNote is "{nid}"' for nid in batch_ids])
+
+        script = f'''
+        tell application "Notes"
+            set output to ""
+            repeat with theNote in notes
+                try
+                    if {id_conditions} then
+                        set noteId to id of theNote
+                        set noteTitle to name of theNote
+                        set noteBody to plaintext of theNote
+
+                        try
+                            set noteFolder to name of container of theNote
+                        on error
+                            set noteFolder to "Notes"
+                        end try
+
+                        set modDate to modification date of theNote
+                        set modDateStr to (year of modDate as string) & "-" & text -2 thru -1 of ("0" & ((month of modDate) as integer)) & "-" & text -2 thru -1 of ("0" & (day of modDate)) & "T" & text -2 thru -1 of ("0" & (hours of modDate)) & ":" & text -2 thru -1 of ("0" & (minutes of modDate)) & ":" & text -2 thru -1 of ("0" & (seconds of modDate))
+
+                        set output to output & noteId & "<<<SEP>>>" & noteTitle & "<<<SEP>>>" & noteBody & "<<<SEP>>>" & noteFolder & "<<<SEP>>>" & modDateStr & "<<<NOTE>>>"
+                    end if
+                on error
+                    -- Skip notes that cause errors
+                end try
+            end repeat
+
+            return output
+        end tell
+        '''
+
+        result = run_applescript(script, timeout=120)
+        if not result:
+            continue
+
+        note_strings = result.split("<<<NOTE>>>")
+
+        for note_str in note_strings:
+            if not note_str.strip():
+                continue
+
+            parts = note_str.split("<<<SEP>>>")
+            if len(parts) >= 5:
+                mod_date = None
+                try:
+                    mod_date = datetime.fromisoformat(parts[4])
+                except (ValueError, IndexError):
+                    pass
+
+                all_notes.append(Note(
+                    id=parts[0],
+                    title=parts[1],
+                    body=parts[2],
+                    folder=parts[3],
+                    modification_date=mod_date,
+                ))
+
+    if show_progress:
+        console.print(f"[green]Fetched {len(all_notes)} notes[/green]")
+
+    return all_notes
 
 
 def get_all_note_titles() -> list[str]:

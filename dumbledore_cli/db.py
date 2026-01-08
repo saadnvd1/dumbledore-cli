@@ -241,6 +241,17 @@ def get_last_conversation() -> Optional[dict]:
     return conversations[0] if conversations else None
 
 
+def update_conversation_topic(conversation_id: int, topic: str) -> None:
+    """Update the topic of a conversation."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE conversations SET topic = ? WHERE id = ?
+    """, (topic, conversation_id))
+    conn.commit()
+    conn.close()
+
+
 # ============ Settings ============
 
 def set_setting(key: str, value: str) -> None:

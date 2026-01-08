@@ -2,9 +2,11 @@
 
 import shutil
 import subprocess
-from typing import Optional
+import sys
+from typing import Optional, Generator
 
 from rich.console import Console
+from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 
@@ -17,7 +19,7 @@ def check_claude_cli() -> bool:
 
 
 def run_claude(prompt: str, system_context: Optional[str] = None) -> Optional[str]:
-    """Run Claude CLI with a prompt.
+    """Run Claude CLI with a prompt (non-streaming).
 
     Args:
         prompt: The user's question/message
@@ -61,6 +63,90 @@ def run_claude(prompt: str, system_context: Optional[str] = None) -> Optional[st
         return None
 
 
+def run_claude_stream(prompt: str, system_context: Optional[str] = None) -> Optional[str]:
+    """Run Claude CLI with streaming output.
+
+    Displays response as it streams, returns full response when done.
+    """
+    import json
+
+    if not check_claude_cli():
+        console.print(
+            Panel(
+                "[yellow]Claude CLI not found.[/yellow]\n\n"
+                "Install: npm install -g @anthropic-ai/claude-code\n"
+                "Auth: claude login",
+                title="Claude CLI Required",
+                border_style="yellow",
+            )
+        )
+        return None
+
+    full_prompt = build_prompt(prompt, system_context)
+
+    try:
+        process = subprocess.Popen(
+            ["claude", "-p", full_prompt, "--output-format", "stream-json", "--verbose", "--include-partial-messages"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+
+        full_response = ""
+        console.print()
+
+        # Stream output with live markdown rendering
+        with Live(Markdown("▌"), refresh_per_second=20, console=console, vertical_overflow="visible") as live:
+            for line in iter(process.stdout.readline, ''):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    msg_type = data.get("type")
+
+                    # Handle streaming events with partial messages
+                    if msg_type == "stream_event":
+                        event = data.get("event", {})
+                        event_type = event.get("type")
+
+                        if event_type == "content_block_delta":
+                            delta = event.get("delta", {})
+                            if delta.get("type") == "text_delta":
+                                full_response += delta.get("text", "")
+                                live.update(Markdown(full_response + "▌"))
+
+                    elif msg_type == "result":
+                        # Final result - use this as the definitive response
+                        result_text = data.get("result", "")
+                        if result_text:
+                            full_response = result_text
+                        live.update(Markdown(full_response))
+
+                except json.JSONDecodeError:
+                    pass
+
+            # Final update without cursor
+            if full_response:
+                live.update(Markdown(full_response))
+
+        process.wait()
+
+        if process.returncode != 0:
+            stderr = process.stderr.read()
+            if stderr:
+                console.print(f"[red]Claude error: {stderr}[/red]")
+            return None
+
+        console.print()
+        return full_response.strip() if full_response else None
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return None
+
+
 def build_prompt(user_message: str, context: Optional[str] = None) -> str:
     """Build the full prompt with system instructions and context."""
 
@@ -79,6 +165,7 @@ Style:
 - Draw connections between different areas of their life
 - Ask clarifying questions when needed
 - Avoid generic advice - make it specific to them
+- If a "Writing Style to Match" section is provided, mimic that writing style in your responses
 
 You're not just an AI assistant - you're a trusted advisor who knows them well."""
 
@@ -109,14 +196,11 @@ Responding based on general conversation context only.
 If this seems wrong, try being more specific or run 'dumbledore sync' to update the knowledge base."""
 
 
-def display_response(response: str, title: str = "Dumbledore") -> None:
-    """Display a response in a nice panel."""
+def display_response(response: str) -> None:
+    """Display a response cleanly for easy copying."""
     console.print()
-    console.print(Panel(
-        Markdown(response),
-        title=f"[bold blue]{title}[/bold blue]",
-        border_style="blue",
-    ))
+    console.print(Markdown(response))
+    console.print()
 
 
 def display_thinking() -> None:

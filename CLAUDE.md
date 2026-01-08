@@ -11,6 +11,8 @@ dumbledore_cli/
 ├── db.py               # SQLite for conversations/metadata
 ├── notes.py            # AppleScript bridge to Apple Notes
 ├── markdown.py         # Local markdown file sync
+├── projects.py         # Project docs sync from ~/dev/*
+├── style.py            # Writing style analysis
 ├── config.py           # Settings and paths
 └── rag/
     ├── embeddings.py   # sentence-transformers wrapper
@@ -27,16 +29,18 @@ data/
 ## Key Components
 
 - **Multi-source Sync**: Apple Notes (AppleScript), markdown files, LumifyHub exports
+- **Project Docs**: Auto-syncs README.md and CLAUDE.md from ~/dev/* projects
 - **Local Embeddings**: sentence-transformers `all-MiniLM-L6-v2` (22MB, no API calls)
 - **Vector Store**: ChromaDB for persistent local vector storage
 - **Smart Chunking**: Structure-aware chunking that preserves semantic boundaries
 - **Profile Note**: Special note titled "Who am I?" always included in context
+- **Style Profile**: Generated writing style guide from notes, included in responses
 - **Conversation Memory**: Past conversations are embedded and retrieved for context
 
 ## Commands
 
 ```bash
-dumbledore sync                         # Sync Apple Notes
+dumbledore sync                         # Sync all sources (notes + projects)
 dumbledore sync --markdown ~/notes      # Sync markdown folder
 dumbledore sync --markdown ~/LumifyHub  # Sync LumifyHub export
 dumbledore chat                         # Interactive session
@@ -46,16 +50,20 @@ dumbledore search "query"               # Semantic search
 dumbledore notes                        # List synced notes
 dumbledore stats                        # Knowledge base stats
 dumbledore profile                      # View profile note
+dumbledore style                        # Generate writing style profile
+dumbledore style --show                 # View style profile
+dumbledore style --clear                # Clear style profile
 dumbledore conversations                # List past conversations
 dumbledore clear                        # Clear synced data
 ```
 
 ## RAG Pipeline
 
-1. **Sync**: Notes/Markdown → Chunk → Embed → ChromaDB
+1. **Sync**: Notes/Markdown/Projects → Chunk → Embed → ChromaDB
 2. **Query**: Question → Embed → Similarity search → Top-k chunks → Context
-3. **Response**: Profile + Relevant chunks + Past conversations → Claude CLI
+3. **Response**: Profile + Style + Relevant chunks + Past conversations → Claude CLI
 4. **Memory**: Completed conversations (>3 exchanges) → Embed → Store for future retrieval
+5. **Style**: `dumbledore style` → Sample notes → Claude analysis → Style profile stored
 
 ## Setup
 
