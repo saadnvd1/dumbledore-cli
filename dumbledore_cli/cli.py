@@ -11,7 +11,7 @@ from rich.markdown import Markdown
 
 from . import ai, db, notes, markdown
 from .config import PROFILE_NOTE_TITLE, AUTO_SYNC_HOURS, MARKDOWN_SOURCES
-from .rag import chunker, embeddings, retriever, vectorstore
+from .rag import chunker, embeddings, retriever, vectorstore, memory
 
 app = typer.Typer(
     name="dumbledore",

@@ -21,7 +21,7 @@ class Note:
     modification_date: Optional[datetime] = None
 
 
-def run_applescript(script: str, timeout: int = 300) -> Optional[str]:
+def run_applescript(script: str, timeout: int = 600) -> Optional[str]:
     """Run AppleScript and return output."""
     try:
         result = subprocess.run(
@@ -90,51 +90,36 @@ def get_note_by_title(title: str) -> Optional[Note]:
     return None
 
 
-def get_all_notes(limit: Optional[int] = None, show_progress: bool = True) -> list[Note]:
-    """Get all notes with their content.
-
-    Note: This can be slow for many notes. Use limit to restrict.
-    """
-    # First get count
-    total = get_note_count()
-    if limit:
-        total = min(total, limit)
-
-    if show_progress:
-        console.print(f"[dim]Fetching {total} notes from Apple Notes...[/dim]")
-
-    # AppleScript to get all notes data
-    # We use a delimiter that's unlikely to appear in notes
-    # Use try block to handle notes that may have missing containers
+def get_notes_batch(start: int, batch_size: int) -> list[Note]:
+    """Get a batch of notes starting from index."""
     script = f'''
     tell application "Notes"
         set output to ""
         set noteList to notes
-        set maxNotes to {total}
-        set counter to 0
+        set startIdx to {start + 1}
+        set endIdx to {start + batch_size}
+        set noteCount to count of noteList
 
-        repeat with theNote in noteList
-            if counter >= maxNotes then exit repeat
+        if endIdx > noteCount then set endIdx to noteCount
+        if startIdx > noteCount then return ""
 
+        repeat with i from startIdx to endIdx
             try
+                set theNote to item i of noteList
                 set noteId to id of theNote
                 set noteTitle to name of theNote
                 set noteBody to plaintext of theNote
 
-                -- Try to get folder name, default to "Notes" if not available
                 try
                     set noteFolder to name of container of theNote
                 on error
                     set noteFolder to "Notes"
                 end try
 
-                -- Get modification date as ISO string
                 set modDate to modification date of theNote
                 set modDateStr to (year of modDate as string) & "-" & text -2 thru -1 of ("0" & ((month of modDate) as integer)) & "-" & text -2 thru -1 of ("0" & (day of modDate)) & "T" & text -2 thru -1 of ("0" & (hours of modDate)) & ":" & text -2 thru -1 of ("0" & (minutes of modDate)) & ":" & text -2 thru -1 of ("0" & (seconds of modDate))
 
                 set output to output & noteId & "<<<SEP>>>" & noteTitle & "<<<SEP>>>" & noteBody & "<<<SEP>>>" & noteFolder & "<<<SEP>>>" & modDateStr & "<<<NOTE>>>"
-
-                set counter to counter + 1
             on error
                 -- Skip notes that cause errors
             end try
@@ -144,11 +129,11 @@ def get_all_notes(limit: Optional[int] = None, show_progress: bool = True) -> li
     end tell
     '''
 
-    result = run_applescript(script)
+    result = run_applescript(script, timeout=120)
     if not result:
         return []
 
-    all_notes = []
+    notes_list = []
     note_strings = result.split("<<<NOTE>>>")
 
     for note_str in note_strings:
@@ -157,14 +142,13 @@ def get_all_notes(limit: Optional[int] = None, show_progress: bool = True) -> li
 
         parts = note_str.split("<<<SEP>>>")
         if len(parts) >= 5:
-            # Parse modification date
             mod_date = None
             try:
                 mod_date = datetime.fromisoformat(parts[4])
             except (ValueError, IndexError):
                 pass
 
-            all_notes.append(Note(
+            notes_list.append(Note(
                 id=parts[0],
                 title=parts[1],
                 body=parts[2],
@@ -172,13 +156,53 @@ def get_all_notes(limit: Optional[int] = None, show_progress: bool = True) -> li
                 modification_date=mod_date,
             ))
         elif len(parts) >= 4:
-            # Fallback without modification date
-            all_notes.append(Note(
+            notes_list.append(Note(
                 id=parts[0],
                 title=parts[1],
                 body=parts[2],
                 folder=parts[3],
             ))
+
+    return notes_list
+
+
+def get_all_notes(limit: Optional[int] = None, show_progress: bool = True, batch_size: int = 50) -> list[Note]:
+    """Get all notes with their content in batches.
+
+    Args:
+        limit: Max number of notes to fetch
+        show_progress: Show progress messages
+        batch_size: Number of notes per batch (default 50)
+    """
+    total = get_note_count()
+    if limit:
+        total = min(total, limit)
+
+    if show_progress:
+        console.print(f"[dim]Fetching {total} notes from Apple Notes (in batches of {batch_size})...[/dim]")
+
+    all_notes = []
+    fetched = 0
+
+    while fetched < total:
+        remaining = total - fetched
+        current_batch = min(batch_size, remaining)
+
+        if show_progress:
+            console.print(f"[dim]  Batch {fetched + 1}-{fetched + current_batch} of {total}...[/dim]")
+
+        batch_notes = get_notes_batch(fetched, current_batch)
+
+        if not batch_notes:
+            # No more notes or error
+            break
+
+        all_notes.extend(batch_notes)
+        fetched += len(batch_notes)
+
+        # If we got fewer than requested, we're done
+        if len(batch_notes) < current_batch:
+            break
 
     if show_progress:
         console.print(f"[green]Fetched {len(all_notes)} notes[/green]")

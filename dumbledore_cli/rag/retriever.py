@@ -45,16 +45,18 @@ def get_profile_context() -> Optional[str]:
     return profile_text
 
 
-def build_context(query: str, top_k: int = TOP_K_RESULTS) -> str:
+def build_context(query: str, top_k: int = TOP_K_RESULTS, include_conversations: bool = True) -> str:
     """Build full context for a query.
 
     Includes:
     1. Profile note (who you are) - always included
-    2. Relevant chunks from semantic search
+    2. Relevant chunks from semantic search (notes)
+    3. Relevant past conversations (if enabled)
 
     Args:
         query: The user's question
         top_k: Number of chunks to retrieve
+        include_conversations: Whether to include past conversation context
 
     Returns:
         Formatted context string for the LLM prompt
@@ -66,28 +68,35 @@ def build_context(query: str, top_k: int = TOP_K_RESULTS) -> str:
     if profile:
         context_parts.append(f"## About the User\n{profile}")
 
-    # 2. Relevant chunks
+    # 2. Relevant chunks from notes
     results = retrieve(query, top_k=top_k)
 
-    if results:
-        relevant_chunks = []
-        seen_titles = set()
+    note_chunks = []
+    conversation_chunks = []
+    seen_titles = set()
 
-        for r in results:
-            # Include source info
-            title = r["metadata"].get("note_title", "Unknown")
-            doc = r["document"]
+    for r in results:
+        title = r["metadata"].get("note_title", "Unknown")
+        doc = r["document"]
+        source = r["metadata"].get("source", "note")
 
-            # Track which notes we're pulling from
-            seen_titles.add(title)
-            relevant_chunks.append(doc)
+        seen_titles.add(title)
 
-        if relevant_chunks:
-            context_parts.append("## Relevant Notes\n" + "\n\n---\n\n".join(relevant_chunks))
+        if source == "conversation":
+            conversation_chunks.append(doc)
+        else:
+            note_chunks.append(doc)
 
-            # Add source summary
-            if seen_titles:
-                context_parts.append(f"[Sources: {', '.join(sorted(seen_titles))}]")
+    if note_chunks:
+        context_parts.append("## Relevant Notes\n" + "\n\n---\n\n".join(note_chunks))
+
+    # 3. Past conversations (from RAG results or separate query)
+    if include_conversations and conversation_chunks:
+        context_parts.append("## Relevant Past Conversations\n" + "\n\n---\n\n".join(conversation_chunks))
+
+    # Add source summary
+    if seen_titles:
+        context_parts.append(f"[Sources: {', '.join(sorted(seen_titles))}]")
 
     if not context_parts:
         return ""

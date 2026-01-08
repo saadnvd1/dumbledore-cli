@@ -43,8 +43,13 @@ def get_collection() -> chromadb.Collection:
     return _collection
 
 
-def add_chunks(chunks: list[Chunk], embeddings: list[list[float]]) -> int:
+def add_chunks(chunks: list[Chunk], embeddings: list[list[float]], source: str = "note") -> int:
     """Add chunks with their embeddings to the vector store.
+
+    Args:
+        chunks: List of Chunk objects
+        embeddings: Corresponding embeddings
+        source: Source type ("note" or "conversation")
 
     Returns number of chunks added.
     """
@@ -64,6 +69,7 @@ def add_chunks(chunks: list[Chunk], embeddings: list[list[float]]) -> int:
             "note_id": chunk.note_id,
             "note_title": chunk.note_title,
             "chunk_index": chunk.chunk_index,
+            "source": chunk.metadata.get("source", source) if chunk.metadata else source,
         }
         for chunk in chunks
     ]
@@ -77,6 +83,14 @@ def add_chunks(chunks: list[Chunk], embeddings: list[list[float]]) -> int:
     )
 
     return len(chunks)
+
+
+def add_conversation_chunks(chunks: list[Chunk], embeddings: list[list[float]]) -> int:
+    """Add conversation chunks to the vector store.
+
+    Convenience wrapper that sets source to 'conversation'.
+    """
+    return add_chunks(chunks, embeddings, source="conversation")
 
 
 def search(

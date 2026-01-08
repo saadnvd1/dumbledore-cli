@@ -1,24 +1,41 @@
-# dumbledore-cli
+# Dumbledore
 
-Personal AI advisor with RAG-powered context from your Apple Notes. Dumbledore knows your goals, projects, values, and life context to give personalized advice.
+Your personal AI advisor that actually knows you. Dumbledore uses RAG to pull context from your notes, giving you personalized advice grounded in your goals, projects, and life context.
 
-## Features
+## Why Dumbledore?
 
-- **Apple Notes Integration** - Syncs directly from Notes.app (works with iPhone via iCloud)
-- **Local RAG Pipeline** - Semantic search using local embeddings (no API calls for search)
-- **Scalable Context** - Handles hundreds of notes efficiently via chunking + vector search
-- **Conversation Memory** - Maintains context across chat sessions
-- **Profile-Aware** - Always considers your "Who am I?" note for personalized responses
+Generic AI assistants don't know anything about you. Dumbledore changes that by:
+
+- **Knowing your context** - Syncs from your personal notes (Apple Notes, markdown files, or [LumifyHub](https://www.lumifyhub.io/cli))
+- **Local-first** - Embeddings run locally, your data stays on your machine
+- **Learning over time** - Conversations are remembered and become part of your knowledge base
+- **Profile-aware** - Your "Who am I?" note is always included for personalized responses
+
+## Data Sources
+
+Dumbledore supports multiple knowledge sources:
+
+| Source | Best For | Setup |
+|--------|----------|-------|
+| **Apple Notes** | iPhone/Mac users with iCloud sync | Just works on macOS |
+| **Markdown files** | Obsidian, Logseq, or any local notes | Point to your folder |
+| **[LumifyHub](https://www.lumifyhub.io/cli)** | Structured knowledge management | Export to markdown, sync that folder |
 
 ## Quick Start
 
 ```bash
 # Install
-cd ~/dev/dumbledore-cli
+pip install dumbledore-cli
+
+# Or install from source
+git clone https://github.com/yourusername/dumbledore-cli
+cd dumbledore-cli
 pip install -e .
 
-# Sync your notes
-dumbledore sync
+# Sync your knowledge
+dumbledore sync                           # Apple Notes (macOS)
+dumbledore sync --markdown ~/notes        # Markdown folder
+dumbledore sync --markdown ~/LumifyHub    # LumifyHub export
 
 # Start chatting
 dumbledore chat
@@ -26,12 +43,24 @@ dumbledore chat
 
 ## Usage
 
-### Sync Notes from Apple Notes
+### Syncing Your Notes
 
 ```bash
-dumbledore sync              # Sync all notes
-dumbledore sync --limit 100  # Sync first 100 notes
-dumbledore sync --clear      # Clear and re-sync
+# Apple Notes (macOS only)
+dumbledore sync                    # Sync all notes
+dumbledore sync --limit 100        # Sync first 100 notes
+
+# Markdown files (works everywhere)
+dumbledore sync --markdown ~/path/to/notes
+dumbledore sync --markdown ~/Obsidian/vault
+dumbledore sync --markdown ~/LumifyHub
+
+# Combine sources
+dumbledore sync --markdown ~/notes  # Then run:
+dumbledore sync                     # Adds Apple Notes too
+
+# Fresh start
+dumbledore sync --clear             # Clear and re-sync
 ```
 
 ### Chat with Dumbledore
@@ -52,9 +81,10 @@ In chat, you can use:
 ```bash
 dumbledore ask "Should I keep working on this project?"
 dumbledore ask "What are my main goals right now?"
+dumbledore ask "Based on my notes, what should I focus on?"
 ```
 
-### Search Notes
+### Search Your Knowledge
 
 ```bash
 dumbledore search "business ideas"
@@ -73,47 +103,84 @@ dumbledore clear          # Clear synced data
 
 ## Profile Note
 
-Create a note in Apple Notes titled **"Who am I?"** with information about yourself:
+Create a note titled **"Who am I?"** with information about yourself:
 
 - Who you are
 - Your goals and values
 - Current projects
 - What matters to you
 
-This note is always included in Dumbledore's context for personalized responses.
+This note is always included in context, so Dumbledore knows who it's talking to.
 
 ## How It Works
 
 ```
-iPhone Notes → iCloud → macOS Notes.app → AppleScript → Dumbledore
+[Your Notes] → Sync → Chunk → Embed locally → ChromaDB
 
-[Sync]
-Notes → Chunk by structure → Embed locally → Store in ChromaDB
-
-[Query]
+[You ask a question]
+    ↓
 Question → Embed → Vector similarity search → Top-k relevant chunks
-         → Build context (profile + chunks + history) → Claude CLI
+    ↓
+Profile + Relevant context + Conversation history → Claude → Response
+    ↓
+Conversation saved → Embedded for future context
 ```
+
+## Using with LumifyHub
+
+[LumifyHub](https://www.lumifyhub.io) is a modern workspace for docs, chat, and boards with AI built-in. Use the [LumifyHub CLI](https://www.lumifyhub.io/cli) to export your workspace to markdown:
+
+```bash
+npm install -g lumifyhub-cli
+```
+
+LumifyHub is ideal for:
+
+- Team knowledge bases and documentation
+- Structured note organization
+- Clean markdown export for local AI use
+
+To use with Dumbledore:
+
+```bash
+# Export your LumifyHub workspace to markdown
+lumifyhub export ~/LumifyHub
+
+# Sync with Dumbledore
+dumbledore sync --markdown ~/LumifyHub
+```
+
+This gives you the best of both worlds: LumifyHub for collaborative knowledge management, Dumbledore for personal AI-powered retrieval.
 
 ## Tech Stack
 
-- **Embeddings**: sentence-transformers `all-MiniLM-L6-v2` (22MB, local)
+- **Embeddings**: sentence-transformers `all-MiniLM-L6-v2` (22MB, runs locally)
 - **Vector DB**: ChromaDB (local, persistent)
-- **LLM**: Claude CLI
+- **LLM**: Claude (via Claude CLI)
 - **CLI**: Typer + Rich
 
 ## Requirements
 
-- macOS (for Apple Notes integration)
 - Python 3.11+
 - Claude CLI (`npm install -g @anthropic-ai/claude-code`)
+- macOS (only for Apple Notes integration - markdown works everywhere)
 
-## Dependencies
+## Installation
 
+```bash
+# From PyPI (coming soon)
+pip install dumbledore-cli
+
+# From source
+git clone https://github.com/yourusername/dumbledore-cli
+cd dumbledore-cli
+pip install -e .
 ```
-typer>=0.9.0
-rich>=13.0.0
-chromadb>=0.4.0
-sentence-transformers>=2.2.0
-questionary>=2.0.0
-```
+
+## Contributing
+
+Contributions welcome! Please open an issue or PR.
+
+## License
+
+MIT
