@@ -29,6 +29,7 @@ def init_db(db_path: Optional[Path] = None) -> None:
             note_id TEXT UNIQUE NOT NULL,
             note_title TEXT NOT NULL,
             chunk_count INTEGER DEFAULT 0,
+            note_modified_at TIMESTAMP,
             synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -74,21 +75,44 @@ def init_db(db_path: Optional[Path] = None) -> None:
 
 # ============ Synced Notes ============
 
-def record_synced_note(note_id: str, note_title: str, chunk_count: int) -> None:
+def record_synced_note(note_id: str, note_title: str, chunk_count: int, note_modified_at: Optional[str] = None) -> None:
     """Record that a note has been synced."""
     init_db()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO synced_notes (note_id, note_title, chunk_count, synced_at)
-        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO synced_notes (note_id, note_title, chunk_count, note_modified_at, synced_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(note_id) DO UPDATE SET
             note_title = ?,
             chunk_count = ?,
+            note_modified_at = ?,
             synced_at = CURRENT_TIMESTAMP
-    """, (note_id, note_title, chunk_count, note_title, chunk_count))
+    """, (note_id, note_title, chunk_count, note_modified_at, note_title, chunk_count, note_modified_at))
     conn.commit()
     conn.close()
+
+
+def get_synced_note_modified_at(note_id: str) -> Optional[str]:
+    """Get the stored modification date for a synced note."""
+    init_db()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT note_modified_at FROM synced_notes WHERE note_id = ?", (note_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row["note_modified_at"] if row else None
+
+
+def get_all_synced_note_ids() -> set[str]:
+    """Get all synced note IDs."""
+    init_db()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT note_id FROM synced_notes")
+    rows = cursor.fetchall()
+    conn.close()
+    return {row["note_id"] for row in rows}
 
 
 def get_synced_notes() -> list[dict]:

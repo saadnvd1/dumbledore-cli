@@ -128,7 +128,11 @@ def get_all_notes(limit: Optional[int] = None, show_progress: bool = True) -> li
                     set noteFolder to "Notes"
                 end try
 
-                set output to output & noteId & "<<<SEP>>>" & noteTitle & "<<<SEP>>>" & noteBody & "<<<SEP>>>" & noteFolder & "<<<NOTE>>>"
+                -- Get modification date as ISO string
+                set modDate to modification date of theNote
+                set modDateStr to (year of modDate as string) & "-" & text -2 thru -1 of ("0" & ((month of modDate) as integer)) & "-" & text -2 thru -1 of ("0" & (day of modDate)) & "T" & text -2 thru -1 of ("0" & (hours of modDate)) & ":" & text -2 thru -1 of ("0" & (minutes of modDate)) & ":" & text -2 thru -1 of ("0" & (seconds of modDate))
+
+                set output to output & noteId & "<<<SEP>>>" & noteTitle & "<<<SEP>>>" & noteBody & "<<<SEP>>>" & noteFolder & "<<<SEP>>>" & modDateStr & "<<<NOTE>>>"
 
                 set counter to counter + 1
             on error
@@ -152,7 +156,23 @@ def get_all_notes(limit: Optional[int] = None, show_progress: bool = True) -> li
             continue
 
         parts = note_str.split("<<<SEP>>>")
-        if len(parts) >= 4:
+        if len(parts) >= 5:
+            # Parse modification date
+            mod_date = None
+            try:
+                mod_date = datetime.fromisoformat(parts[4])
+            except (ValueError, IndexError):
+                pass
+
+            all_notes.append(Note(
+                id=parts[0],
+                title=parts[1],
+                body=parts[2],
+                folder=parts[3],
+                modification_date=mod_date,
+            ))
+        elif len(parts) >= 4:
+            # Fallback without modification date
             all_notes.append(Note(
                 id=parts[0],
                 title=parts[1],

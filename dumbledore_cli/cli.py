@@ -58,7 +58,7 @@ def auto_sync_if_needed(limit: int = 200) -> bool:
 
 
 def run_sync(limit: Optional[int] = None, clear: bool = False, silent: bool = False):
-    """Run the sync operation."""
+    """Run the sync operation (smart incremental sync)."""
     if clear:
         if not silent:
             console.print("[yellow]Clearing existing data...[/yellow]")
@@ -79,10 +79,28 @@ def run_sync(limit: Optional[int] = None, clear: bool = False, silent: bool = Fa
         return
 
     if not silent:
-        console.print(f"[green]Found {len(all_notes)} notes[/green]\n")
+        console.print(f"[green]Found {len(all_notes)} notes[/green]")
+
+    # Smart sync: only process new or modified notes
+    notes_to_sync = []
+    for note in all_notes:
+        stored_mod = db.get_synced_note_modified_at(note.id)
+        note_mod = note.modification_date.isoformat() if note.modification_date else None
+
+        # Sync if: new note, no stored mod date, or modification date changed
+        if stored_mod is None or note_mod is None or stored_mod != note_mod:
+            notes_to_sync.append(note)
+
+    if not notes_to_sync:
+        if not silent:
+            console.print("[dim]All notes up to date, nothing to sync.[/dim]")
+        return
+
+    if not silent:
+        console.print(f"[dim]{len(notes_to_sync)} notes need updating...[/dim]\n")
         console.print("[dim]Chunking notes...[/dim]")
 
-    all_chunks = chunker.chunk_notes(all_notes)
+    all_chunks = chunker.chunk_notes(notes_to_sync)
 
     if not silent:
         console.print(f"[dim]Created {len(all_chunks)} chunks[/dim]\n")
@@ -96,15 +114,16 @@ def run_sync(limit: Optional[int] = None, clear: bool = False, silent: bool = Fa
         console.print("[dim]Storing in vector database...[/dim]")
     vectorstore.add_chunks(all_chunks, chunk_embeddings)
 
-    # Record sync metadata
-    for note in all_notes:
+    # Record sync metadata with modification dates
+    for note in notes_to_sync:
         note_chunks = [c for c in all_chunks if c.note_id == note.id]
-        db.record_synced_note(note.id, note.title, len(note_chunks))
+        note_mod = note.modification_date.isoformat() if note.modification_date else None
+        db.record_synced_note(note.id, note.title, len(note_chunks), note_mod)
 
     if not silent:
         console.print()
         console.print(Panel(
-            f"[green]Synced {len(all_notes)} notes ({len(all_chunks)} chunks)[/green]\n\n"
+            f"[green]Synced {len(notes_to_sync)} notes ({len(all_chunks)} chunks)[/green]\n\n"
             f"Run [bold]dumbledore chat[/bold] to start talking!",
             title="Sync Complete",
             border_style="green",
