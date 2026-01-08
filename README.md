@@ -128,7 +128,7 @@ Conversation saved → Embedded for future context
 
 ## Using with LumifyHub
 
-[LumifyHub](https://www.lumifyhub.io) is a modern workspace for docs, chat, and boards with AI built-in. Use the [LumifyHub CLI](https://www.lumifyhub.io/cli) to export your workspace to markdown:
+[LumifyHub](https://www.lumifyhub.io) is a modern workspace for docs, chat, and boards with AI built-in. Use the [LumifyHub CLI](https://www.lumifyhub.io/cli) to sync your pages locally as markdown:
 
 ```bash
 npm install -g lumifyhub-cli
@@ -143,11 +143,12 @@ LumifyHub is ideal for:
 To use with Dumbledore:
 
 ```bash
-# Export your LumifyHub workspace to markdown
-lumifyhub export ~/LumifyHub
+# Pull your LumifyHub pages locally
+lh login
+lh pull
 
-# Sync with Dumbledore
-dumbledore sync --markdown ~/LumifyHub
+# Sync with Dumbledore (pages are stored in ~/.lumifyhub/pages/)
+dumbledore sync --markdown ~/.lumifyhub/pages
 ```
 
 This gives you the best of both worlds: LumifyHub for collaborative knowledge management, Dumbledore for personal AI-powered retrieval.
