@@ -2,6 +2,8 @@
 
 Your personal AI advisor that actually knows you. Dumbledore uses RAG to pull context from your notes, giving you personalized advice grounded in your goals, projects, and life context.
 
+> If you find this helpful, please consider giving the repo a star!
+
 ## Why Dumbledore?
 
 Generic AI assistants don't know anything about you. Dumbledore changes that by:
@@ -28,7 +30,7 @@ Dumbledore supports multiple knowledge sources:
 pip install dumbledore-cli
 
 # Or install from source
-git clone https://github.com/yourusername/dumbledore-cli
+git clone https://github.com/saadnvd1/dumbledore-cli
 cd dumbledore-cli
 pip install -e .
 
@@ -173,7 +175,7 @@ This gives you the best of both worlds: LumifyHub for collaborative knowledge ma
 pip install dumbledore-cli
 
 # From source
-git clone https://github.com/yourusername/dumbledore-cli
+git clone https://github.com/saadnvd1/dumbledore-cli
 cd dumbledore-cli
 pip install -e .
 ```
@@ -185,3 +187,4 @@ Contributions welcome! Please open an issue or PR.
 ## License
 
 MIT
+
