@@ -1,5 +1,6 @@
 """Dumbledore CLI - Personal AI advisor with RAG-powered context."""
 
+from datetime import datetime, timedelta
 from typing import Optional
 
 import typer
@@ -9,7 +10,7 @@ from rich.table import Table
 from rich.markdown import Markdown
 
 from . import ai, db, notes
-from .config import PROFILE_NOTE_TITLE
+from .config import PROFILE_NOTE_TITLE, AUTO_SYNC_HOURS
 from .rag import chunker, embeddings, retriever, vectorstore
 
 app = typer.Typer(
@@ -20,41 +21,79 @@ app = typer.Typer(
 console = Console()
 
 
-@app.command()
-def sync(
-    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Limit number of notes to sync"),
-    clear: bool = typer.Option(False, "--clear", "-c", help="Clear existing data before sync"),
-):
-    """Sync notes from Apple Notes into the knowledge base."""
+def needs_sync() -> bool:
+    """Check if we need to sync (no data or stale)."""
+    stats = db.get_sync_stats()
 
+    # No notes synced
+    if stats["note_count"] == 0:
+        return True
+
+    # Check if last sync is stale
+    if stats["last_sync"]:
+        try:
+            last_sync = datetime.fromisoformat(stats["last_sync"])
+            if datetime.now() - last_sync > timedelta(hours=AUTO_SYNC_HOURS):
+                return True
+        except (ValueError, TypeError):
+            return True
+
+    return False
+
+
+def auto_sync_if_needed(limit: int = 200) -> bool:
+    """Auto-sync if needed. Returns True if sync was performed."""
+    if not needs_sync():
+        return False
+
+    stats = db.get_sync_stats()
+    if stats["note_count"] == 0:
+        console.print("[yellow]No notes synced yet. Running initial sync...[/yellow]\n")
+    else:
+        console.print("[dim]Notes are stale, syncing in background...[/dim]\n")
+
+    # Run sync
+    run_sync(limit=limit, clear=False, silent=True)
+    return True
+
+
+def run_sync(limit: Optional[int] = None, clear: bool = False, silent: bool = False):
+    """Run the sync operation."""
     if clear:
-        console.print("[yellow]Clearing existing data...[/yellow]")
+        if not silent:
+            console.print("[yellow]Clearing existing data...[/yellow]")
         chunk_count = vectorstore.clear_all()
         db.clear_sync_records()
-        console.print(f"[dim]Cleared {chunk_count} chunks[/dim]")
+        if not silent:
+            console.print(f"[dim]Cleared {chunk_count} chunks[/dim]")
 
-    console.print("[bold]Syncing notes from Apple Notes...[/bold]\n")
+    if not silent:
+        console.print("[bold]Syncing notes from Apple Notes...[/bold]\n")
 
     # Get notes from Apple Notes
-    all_notes = notes.get_all_notes(limit=limit)
+    all_notes = notes.get_all_notes(limit=limit, show_progress=not silent)
 
     if not all_notes:
-        console.print("[yellow]No notes found. Make sure Notes app has notes and permissions are granted.[/yellow]")
+        if not silent:
+            console.print("[yellow]No notes found. Make sure Notes app has notes and permissions are granted.[/yellow]")
         return
 
-    console.print(f"[green]Found {len(all_notes)} notes[/green]\n")
+    if not silent:
+        console.print(f"[green]Found {len(all_notes)} notes[/green]\n")
+        console.print("[dim]Chunking notes...[/dim]")
 
-    # Chunk all notes
-    console.print("[dim]Chunking notes...[/dim]")
     all_chunks = chunker.chunk_notes(all_notes)
-    console.print(f"[dim]Created {len(all_chunks)} chunks[/dim]\n")
+
+    if not silent:
+        console.print(f"[dim]Created {len(all_chunks)} chunks[/dim]\n")
 
     # Embed all chunks
     chunk_texts = [c.text for c in all_chunks]
-    chunk_embeddings = embeddings.embed_texts(chunk_texts)
+    chunk_embeddings = embeddings.embed_texts(chunk_texts, show_progress=not silent)
 
     # Store in vector database
-    console.print("[dim]Storing in vector database...[/dim]")
+    if not silent:
+        console.print("[dim]Storing in vector database...[/dim]")
     vectorstore.add_chunks(all_chunks, chunk_embeddings)
 
     # Record sync metadata
@@ -62,13 +101,23 @@ def sync(
         note_chunks = [c for c in all_chunks if c.note_id == note.id]
         db.record_synced_note(note.id, note.title, len(note_chunks))
 
-    console.print()
-    console.print(Panel(
-        f"[green]Synced {len(all_notes)} notes ({len(all_chunks)} chunks)[/green]\n\n"
-        f"Run [bold]dumbledore chat[/bold] to start talking!",
-        title="Sync Complete",
-        border_style="green",
-    ))
+    if not silent:
+        console.print()
+        console.print(Panel(
+            f"[green]Synced {len(all_notes)} notes ({len(all_chunks)} chunks)[/green]\n\n"
+            f"Run [bold]dumbledore chat[/bold] to start talking!",
+            title="Sync Complete",
+            border_style="green",
+        ))
+
+
+@app.command()
+def sync(
+    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Limit number of notes to sync"),
+    clear: bool = typer.Option(False, "--clear", "-c", help="Clear existing data before sync"),
+):
+    """Sync notes from Apple Notes into the knowledge base."""
+    run_sync(limit=limit, clear=clear, silent=False)
 
 
 @app.command()
@@ -84,6 +133,9 @@ def chat(
         ('question', 'fg:cyan bold'),
         ('answer', 'fg:white'),
     ])
+
+    # Auto-sync if needed
+    auto_sync_if_needed()
 
     # Check if we have any notes synced
     stats = db.get_sync_stats()
@@ -203,6 +255,9 @@ def ask(
     question: str = typer.Argument(..., help="Your question for Dumbledore"),
 ):
     """Ask a single question (no interactive session)."""
+
+    # Auto-sync if needed
+    auto_sync_if_needed()
 
     # Check if we have notes
     stats = db.get_sync_stats()
