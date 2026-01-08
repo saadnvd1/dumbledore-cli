@@ -213,7 +213,11 @@ def chat(
             user_input = None
 
         if user_input is None:
-            console.print("\n[dim]Goodbye![/dim]")
+            # Embed conversation for future retrieval
+            chunks_saved = memory.embed_conversation(conversation_id)
+            if chunks_saved:
+                console.print(f"\n[dim]Conversation saved to memory.[/dim]")
+            console.print("[dim]Goodbye![/dim]")
             break
 
         user_input = user_input.strip()
@@ -222,6 +226,10 @@ def chat(
             continue
 
         if user_input.lower() in ("exit", "quit", "q", "bye"):
+            # Embed conversation for future retrieval
+            chunks_saved = memory.embed_conversation(conversation_id)
+            if chunks_saved:
+                console.print(f"[dim]Conversation saved to memory.[/dim]")
             console.print("[dim]Goodbye![/dim]")
             break
 
