@@ -21,5 +21,10 @@ PROFILE_NOTE_TITLE = "Who am I?"
 # Auto-sync settings
 AUTO_SYNC_HOURS = 2  # Auto-sync if last sync was more than this many hours ago
 
+# Additional markdown sources (local directories)
+MARKDOWN_SOURCES = [
+    Path.home() / ".lumifyhub" / "pages",
+]
+
 # Ensure directories exist
 DATA_DIR.mkdir(parents=True, exist_ok=True)

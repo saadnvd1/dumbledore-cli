@@ -9,8 +9,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.markdown import Markdown
 
-from . import ai, db, notes
-from .config import PROFILE_NOTE_TITLE, AUTO_SYNC_HOURS
+from . import ai, db, notes, markdown
+from .config import PROFILE_NOTE_TITLE, AUTO_SYNC_HOURS, MARKDOWN_SOURCES
 from .rag import chunker, embeddings, retriever, vectorstore
 
 app = typer.Typer(
@@ -67,40 +67,47 @@ def run_sync(limit: Optional[int] = None, clear: bool = False, silent: bool = Fa
         if not silent:
             console.print(f"[dim]Cleared {chunk_count} chunks[/dim]")
 
+    all_items_to_sync = []
+    total_found = 0
+
+    # 1. Sync Apple Notes
     if not silent:
-        console.print("[bold]Syncing notes from Apple Notes...[/bold]\n")
+        console.print("[bold]Syncing from Apple Notes...[/bold]")
 
-    # Get notes from Apple Notes
-    all_notes = notes.get_all_notes(limit=limit, show_progress=not silent)
+    apple_notes = notes.get_all_notes(limit=limit, show_progress=not silent)
+    total_found += len(apple_notes)
 
-    if not all_notes:
-        if not silent:
-            console.print("[yellow]No notes found. Make sure Notes app has notes and permissions are granted.[/yellow]")
-        return
-
-    if not silent:
-        console.print(f"[green]Found {len(all_notes)} notes[/green]")
-
-    # Smart sync: only process new or modified notes
-    notes_to_sync = []
-    for note in all_notes:
+    for note in apple_notes:
         stored_mod = db.get_synced_note_modified_at(note.id)
         note_mod = note.modification_date.isoformat() if note.modification_date else None
-
-        # Sync if: new note, no stored mod date, or modification date changed
         if stored_mod is None or note_mod is None or stored_mod != note_mod:
-            notes_to_sync.append(note)
+            all_items_to_sync.append(note)
 
-    if not notes_to_sync:
+    # 2. Sync markdown files from configured sources
+    for md_source in MARKDOWN_SOURCES:
+        if md_source.exists():
+            if not silent:
+                console.print(f"\n[bold]Syncing from {md_source}...[/bold]")
+
+            md_notes = markdown.get_markdown_files(md_source, show_progress=not silent)
+            total_found += len(md_notes)
+
+            for note in md_notes:
+                stored_mod = db.get_synced_note_modified_at(note.id)
+                note_mod = note.modification_date.isoformat() if note.modification_date else None
+                if stored_mod is None or note_mod is None or stored_mod != note_mod:
+                    all_items_to_sync.append(note)
+
+    if not all_items_to_sync:
         if not silent:
-            console.print("[dim]All notes up to date, nothing to sync.[/dim]")
+            console.print(f"\n[dim]All {total_found} items up to date, nothing to sync.[/dim]")
         return
 
     if not silent:
-        console.print(f"[dim]{len(notes_to_sync)} notes need updating...[/dim]\n")
-        console.print("[dim]Chunking notes...[/dim]")
+        console.print(f"\n[dim]{len(all_items_to_sync)} items need updating...[/dim]")
+        console.print("[dim]Chunking...[/dim]")
 
-    all_chunks = chunker.chunk_notes(notes_to_sync)
+    all_chunks = chunker.chunk_notes(all_items_to_sync)
 
     if not silent:
         console.print(f"[dim]Created {len(all_chunks)} chunks[/dim]\n")
@@ -115,15 +122,15 @@ def run_sync(limit: Optional[int] = None, clear: bool = False, silent: bool = Fa
     vectorstore.add_chunks(all_chunks, chunk_embeddings)
 
     # Record sync metadata with modification dates
-    for note in notes_to_sync:
-        note_chunks = [c for c in all_chunks if c.note_id == note.id]
-        note_mod = note.modification_date.isoformat() if note.modification_date else None
-        db.record_synced_note(note.id, note.title, len(note_chunks), note_mod)
+    for item in all_items_to_sync:
+        item_chunks = [c for c in all_chunks if c.note_id == item.id]
+        item_mod = item.modification_date.isoformat() if item.modification_date else None
+        db.record_synced_note(item.id, item.title, len(item_chunks), item_mod)
 
     if not silent:
         console.print()
         console.print(Panel(
-            f"[green]Synced {len(notes_to_sync)} notes ({len(all_chunks)} chunks)[/green]\n\n"
+            f"[green]Synced {len(all_items_to_sync)} items ({len(all_chunks)} chunks)[/green]\n\n"
             f"Run [bold]dumbledore chat[/bold] to start talking!",
             title="Sync Complete",
             border_style="green",

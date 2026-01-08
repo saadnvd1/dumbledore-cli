@@ -149,6 +149,7 @@ def get_sync_stats() -> dict:
 
 def clear_sync_records() -> int:
     """Clear all sync records."""
+    init_db()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM synced_notes")
