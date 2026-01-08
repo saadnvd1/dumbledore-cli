@@ -17,3 +17,9 @@ coverage/
 .mem.db
 .mem.db-wal
 .mem.db-shm
+
+# Data directory (user-specific)
+data/
+
+# Egg info
+*.egg-info/
